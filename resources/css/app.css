@@ -1,0 +1,255 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+/*
+|------------------------------------------------------------------------------
+| Design tokens
+|------------------------------------------------------------------------------
+|
+| Defining colour, font and radius once here (rather than scattering arbitrary
+| hex values through the markup) is what keeps the interface visually
+| consistent. Every component below refers back to these tokens.
+|
+*/
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Brand: a calm slate-blue, readable and unobtrusive for data-heavy screens. */
+    --color-brand-50: #eef4ff;
+    --color-brand-100: #d9e5ff;
+    --color-brand-200: #bcd1ff;
+    --color-brand-300: #8eb3ff;
+    --color-brand-400: #5a8aff;
+    --color-brand-500: #3563eb;
+    --color-brand-600: #2449d1;
+    --color-brand-700: #1d3aa8;
+    --color-brand-800: #1b3285;
+    --color-brand-900: #1b2e6b;
+}
+
+/*
+|------------------------------------------------------------------------------
+| Base
+|------------------------------------------------------------------------------
+*/
+@layer base {
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-slate-50 text-slate-800 antialiased;
+    }
+
+    /*
+      A visible focus ring is an accessibility requirement, not decoration:
+      keyboard users need to see where they are. :focus-visible shows it for
+      keyboard navigation without adding a ring on every mouse click.
+    */
+    :focus-visible {
+        @apply outline-2 outline-offset-2 outline-brand-500;
+    }
+}
+
+/*
+|------------------------------------------------------------------------------
+| Component utilities
+|------------------------------------------------------------------------------
+|
+| Declared with @utility (not @layer components) because Tailwind 4 resolves
+| @utility definitions before @apply runs, which is what allows one custom class
+| to build on another - e.g. .btn-primary applying .btn.
+|
+*/
+
+/* ---------- Buttons ---------- */
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-colors duration-150
+           disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+}
+
+@utility btn-secondary {
+    @apply btn border border-slate-300 bg-white text-slate-700
+           hover:bg-slate-50 active:bg-slate-100;
+}
+
+@utility btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
+}
+
+@utility btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+}
+
+@utility btn-sm {
+    @apply px-3 py-1.5 text-xs;
+}
+
+/* ---------- Cards ---------- */
+@utility card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+}
+
+@utility card-header {
+    @apply flex flex-wrap items-center justify-between gap-3
+           border-b border-slate-200 px-5 py-4;
+}
+
+@utility card-title {
+    @apply text-base font-semibold text-slate-900;
+}
+
+@utility card-body {
+    @apply px-5 py-4;
+}
+
+/* ---------- Forms ---------- */
+@utility label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
+}
+
+@utility input {
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5
+           text-sm text-slate-900 placeholder:text-slate-400
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20
+           disabled:bg-slate-100 disabled:text-slate-500;
+}
+
+@utility input-error {
+    @apply mt-1.5 flex items-start gap-1 text-sm text-red-600;
+}
+
+@utility help-text {
+    @apply mt-1.5 text-xs text-slate-500;
+}
+
+/* ---------- Tables ---------- */
+@utility table-wrap {
+    @apply w-full overflow-x-auto;
+}
+
+@utility numeric {
+    /* Right-align money so decimal points line up and columns are scannable. */
+    @apply text-right tabular-nums;
+}
+
+/* ---------- Badges ---------- */
+@utility badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5
+           text-xs font-medium;
+}
+
+@utility badge-success {
+    @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20 ring-inset;
+}
+
+@utility badge-warning {
+    @apply badge bg-amber-50 text-amber-800 ring-1 ring-amber-600/20 ring-inset;
+}
+
+@utility badge-danger {
+    @apply badge bg-red-50 text-red-700 ring-1 ring-red-600/20 ring-inset;
+}
+
+@utility badge-neutral {
+    @apply badge bg-slate-100 text-slate-600 ring-1 ring-slate-500/20 ring-inset;
+}
+
+/* ---------- Alerts ---------- */
+@utility alert {
+    @apply flex items-start gap-3 rounded-lg border p-4 text-sm;
+}
+
+@utility alert-success {
+    @apply alert border-emerald-200 bg-emerald-50 text-emerald-800;
+}
+
+@utility alert-error {
+    @apply alert border-red-200 bg-red-50 text-red-800;
+}
+
+@utility alert-info {
+    @apply alert border-brand-200 bg-brand-50 text-brand-800;
+}
+
+/* ---------- Navigation ---------- */
+@utility nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
+           text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900;
+}
+
+@utility nav-link-active {
+    @apply bg-brand-50 text-brand-700 hover:bg-brand-50 hover:text-brand-700;
+}
+
+/* ---------- Stats ---------- */
+@utility stat-value {
+    @apply text-3xl font-semibold tracking-tight text-slate-900 tabular-nums;
+}
+
+@utility stat-label {
+    @apply text-sm font-medium text-slate-500;
+}
+
+/*
+|------------------------------------------------------------------------------
+| Element styles that are not utilities
+|------------------------------------------------------------------------------
+*/
+@layer components {
+    .table {
+        @apply w-full min-w-full text-left text-sm;
+    }
+
+    .table thead th {
+        @apply whitespace-nowrap border-b border-slate-200 bg-slate-50 px-5 py-3
+               text-xs font-semibold uppercase tracking-wide text-slate-500;
+    }
+
+    .table tbody td {
+        @apply border-b border-slate-100 px-5 py-3.5 align-middle text-slate-700;
+    }
+
+    .table tbody tr:last-child td {
+        @apply border-b-0;
+    }
+
+    .table tbody tr:hover {
+        @apply bg-slate-50/70;
+    }
+
+    /* aria-invalid drives the error styling, so the visual state and the state
+       announced to a screen reader can never disagree. */
+    .input[aria-invalid='true'] {
+        @apply border-red-500 focus:border-red-500 focus:ring-red-500/20;
+    }
+
+    /* Laravel pagination links, styled to match the rest of the interface. */
+    .pagination-wrap svg {
+        @apply size-4;
+    }
+}
+
+/*
+  Respect a user request for reduced motion. Vestibular disorders make
+  animation genuinely painful for some people, so this is an accessibility
+  requirement rather than a nicety.
+*/
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

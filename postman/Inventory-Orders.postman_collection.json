@@ -1,0 +1,1268 @@
+{
+    "info": {
+        "_postman_id": "7c1f0a3e-5b2d-4f6a-9e81-1a2b3c4d5e6f",
+        "name": "Inventory & Orders API",
+        "description": "# Inventory & Orders API\n\nLaravel REST API for products, customers and orders.\n\n## Before you start\n\n1. Import `Local-Environment.postman_environment.json` and select it.\n2. Seed the database: `php artisan migrate:fresh --seed`\n3. Start the app: `php artisan serve`\n4. Check `product_id_1/2/3` and `low_stock_product_id` point at real ids (see the README).\n\n## Authentication\n\nEvery endpoint except `POST /api/auth/token` requires a Sanctum bearer token.\n\nRun **00 - Authentication > Issue token** first. Its test script saves the token into\nthe `auth_token` environment variable, which every other request reads automatically.\n\n## Recommended run order\n\n1. `00 - Authentication` > Issue token\n2. `01 - Create order` (top to bottom - later requests reuse saved variables)\n3. `02 - Create order (expected failures)`\n4. `03 - Customer order history`\n5. `04 - Low stock products`\n6. `00 - Authentication` > Revoke the current token (last)\n\n## Requests that are meant to fail\n\nAnything named `FAILS:` is expected to return a 4xx status. Its tests assert that\nfailure, so a green result means the API correctly rejected bad input.\n\n## Security note\n\nThis collection contains no real credentials. The values in the environment file are\nlocal development placeholders that match the database seeder.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "00 - Authentication",
+            "description": "Obtain a Sanctum bearer token. Run \"Issue token\" FIRST: it saves the token into the {{auth_token}} environment variable that every other request depends on.",
+            "item": [
+                {
+                    "name": "Issue token (run this first)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "",
+                                    "pm.test(\"Response contains a bearer token\", () => {",
+                                    "    const body = pm.response.json();",
+                                    "    pm.expect(body.data).to.have.property(\"token\");",
+                                    "    pm.expect(body.data.token_type).to.eql(\"Bearer\");",
+                                    "});",
+                                    "",
+                                    "// Save the token so every other request in this collection can use it.",
+                                    "const body = pm.response.json();",
+                                    "if (body.data && body.data.token) {",
+                                    "    pm.environment.set(\"auth_token\", body.data.token);",
+                                    "    console.log(\"auth_token saved to the environment.\");",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/token",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "token"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"{{api_user_email}}\",\n    \"password\": \"{{api_user_password}}\",\n    \"device_name\": \"postman\"\n}"
+                        },
+                        "description": "Exchanges credentials for a personal access token.\n\nThe credentials come from the environment file and match the seeded local development user. Never put real production credentials here."
+                    }
+                },
+                {
+                    "name": "FAILS: wrong password",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"Message does not reveal whether the email exists\", () => {",
+                                    "    const text = JSON.stringify(pm.response.json()).toLowerCase();",
+                                    "    pm.expect(text).to.not.include(\"no user\");",
+                                    "    pm.expect(text).to.not.include(\"user not found\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/token",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "token"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"{{api_user_email}}\",\n    \"password\": \"definitely-the-wrong-password\"\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422). Confirms invalid credentials are rejected with a generic message that cannot be used to enumerate registered email addresses."
+                    }
+                },
+                {
+                    "name": "FAILS: protected route without a token",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 401 Unauthorized\", () => pm.response.to.have.status(401));",
+                                    "",
+                                    "pm.test(\"Body explains authentication is required\", () => {",
+                                    "    pm.expect(pm.response.json().message).to.include(\"Unauthenticated\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/low-stock",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "low-stock"
+                            ]
+                        },
+                        "description": "EXPECTED TO FAIL (401). Sends no Authorization header, proving every API route really is protected."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "01 - Create order",
+            "description": "POST /api/orders in its successful forms.",
+            "item": [
+                {
+                    "name": "Create order - new customer",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "",
+                                    "pm.test(\"Response has the expected structure\", () => {",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(d).to.have.property(\"id\");",
+                                    "    pm.expect(d).to.have.property(\"reference\");",
+                                    "    pm.expect(d).to.have.property(\"subtotal\");",
+                                    "    pm.expect(d).to.have.property(\"tax_total\");",
+                                    "    pm.expect(d).to.have.property(\"grand_total\");",
+                                    "    pm.expect(d.customer).to.have.property(\"email\");",
+                                    "    pm.expect(d.items).to.be.an(\"array\").that.is.not.empty;",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Grand total equals subtotal plus tax\", () => {",
+                                    "    const d = pm.response.json().data;",
+                                    "    const cents = (v) => Math.round(parseFloat(v) * 100);",
+                                    "    pm.expect(cents(d.grand_total)).to.eql(cents(d.subtotal) + cents(d.tax_total));",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Grand total equals the sum of the line totals\", () => {",
+                                    "    const d = pm.response.json().data;",
+                                    "    const cents = (v) => Math.round(parseFloat(v) * 100);",
+                                    "    const sum = d.items.reduce((t, i) => t + cents(i.line_total), 0);",
+                                    "    pm.expect(cents(d.grand_total)).to.eql(sum);",
+                                    "});",
+                                    "",
+                                    "const d = pm.response.json().data;",
+                                    "pm.environment.set(\"order_id\", d.id);",
+                                    "pm.environment.set(\"order_reference\", d.reference);",
+                                    "pm.environment.set(\"existing_customer_email\", d.customer.email);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Test Customer\",\n        \"email\": \"postman.buyer@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 2\n        }\n    ]\n}"
+                        },
+                        "description": "Creates an order for a customer who does not exist yet, so a new customer row is created.\n\nSaves order_id, order_reference and existing_customer_email into the environment for the requests that follow."
+                    }
+                },
+                {
+                    "name": "Create order - existing customer",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "",
+                                    "pm.test(\"The existing customer was reused, not duplicated\", () => {",
+                                    "    const c = pm.response.json().data.customer;",
+                                    "    pm.expect(c.email).to.eql(pm.environment.get(\"existing_customer_email\"));",
+                                    "});",
+                                    "",
+                                    "pm.test(\"The stored customer name was not overwritten\", () => {",
+                                    "    pm.expect(pm.response.json().data.customer.name).to.eql(\"Test Customer\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"A Completely Different Name\",\n        \"email\": \"{{existing_customer_email}}\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_2}}\",\n            \"quantity\": 1\n        }\n    ]\n}"
+                        },
+                        "description": "Uses the email saved by the previous request. The server matches the existing customer (case-insensitively) and reuses it instead of creating a duplicate. Run the new-customer request first."
+                    }
+                },
+                {
+                    "name": "Create order - multiple products",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "",
+                                    "pm.test(\"All three lines are present\", () => {",
+                                    "    pm.expect(pm.response.json().data.items).to.have.lengthOf(3);",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Each line carries a historic price and tax snapshot\", () => {",
+                                    "    pm.response.json().data.items.forEach((item) => {",
+                                    "        pm.expect(item).to.have.property(\"unit_price\");",
+                                    "        pm.expect(item).to.have.property(\"tax_rate\");",
+                                    "        pm.expect(item).to.have.property(\"line_subtotal\");",
+                                    "        pm.expect(item).to.have.property(\"line_tax\");",
+                                    "        pm.expect(item).to.have.property(\"line_total\");",
+                                    "    });",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Totals reconcile against the lines\", () => {",
+                                    "    const d = pm.response.json().data;",
+                                    "    const cents = (v) => Math.round(parseFloat(v) * 100);",
+                                    "    pm.expect(cents(d.subtotal)).to.eql(d.items.reduce((t, i) => t + cents(i.line_subtotal), 0));",
+                                    "    pm.expect(cents(d.tax_total)).to.eql(d.items.reduce((t, i) => t + cents(i.line_tax), 0));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Multi Line Buyer\",\n        \"email\": \"postman.multi@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 2\n        },\n        {\n            \"product_id\": \"{{product_id_2}}\",\n            \"quantity\": 3\n        },\n        {\n            \"product_id\": \"{{product_id_3}}\",\n            \"quantity\": 1\n        }\n    ]\n}"
+                        },
+                        "description": "Three different products with different tax rates in one order, verifying the per-line tax rounding sums correctly."
+                    }
+                },
+                {
+                    "name": "Server ignores client-supplied prices and totals",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 201 Created\", () => pm.response.to.have.status(201));",
+                                    "",
+                                    "pm.test(\"The fake 0.01 total was ignored\", () => {",
+                                    "    const d = pm.response.json().data;",
+                                    "    pm.expect(parseFloat(d.grand_total)).to.be.above(1);",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Unit price came from the product catalogue\", () => {",
+                                    "    const item = pm.response.json().data.items[0];",
+                                    "    pm.expect(parseFloat(item.unit_price)).to.be.above(0.01);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Price Tamperer\",\n        \"email\": \"postman.tamper@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 1,\n            \"unit_price\": \"0.01\",\n            \"price\": \"0.01\",\n            \"tax_rate\": \"0.00\",\n            \"line_total\": \"0.01\"\n        }\n    ],\n    \"subtotal\": \"0.01\",\n    \"tax_total\": \"0.00\",\n    \"grand_total\": \"0.01\"\n}"
+                        },
+                        "description": "SECURITY CHECK. The body deliberately contains fake prices, tax rates and totals. \n\nThe order is still created (201), but every monetary figure is recalculated from the products table. If this request ever returned a grand_total of 0.01, the API would be critically broken."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "02 - Create order (expected failures)",
+            "description": "Every request in this folder is EXPECTED TO FAIL. They prove validation and stock protection work.",
+            "item": [
+                {
+                    "name": "FAILS: insufficient stock",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 409 Conflict\", () => pm.response.to.have.status(409));",
+                                    "",
+                                    "pm.test(\"Response names the product and the shortfall\", () => {",
+                                    "    const e = pm.response.json().errors.stock[0];",
+                                    "    pm.expect(e).to.have.property(\"product_id\");",
+                                    "    pm.expect(e).to.have.property(\"requested\");",
+                                    "    pm.expect(e).to.have.property(\"available\");",
+                                    "    pm.expect(e.requested).to.be.above(e.available);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Greedy Buyer\",\n        \"email\": \"postman.greedy@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{low_stock_product_id}}\",\n            \"quantity\": 999\n        }\n    ]\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (409 Conflict).\n\nOrders far more than the available stock of a deliberately low-stock product. 409 rather than 422: the payload is well formed, but the current state of the world cannot satisfy it.\n\nNothing is written - no order, and no customer row."
+                    }
+                },
+                {
+                    "name": "FAILS: invalid customer data",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"Both customer fields are flagged\", () => {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property(\"customer.email\");",
+                                    "    pm.expect(errors).to.have.property(\"customer.name\");",
+                                    "});",
+                                    "",
+                                    "pm.test(\"No internal details are leaked\", () => {",
+                                    "    const text = JSON.stringify(pm.response.json());",
+                                    "    pm.expect(text).to.not.include(\"SQLSTATE\");",
+                                    "    pm.expect(text).to.not.include(\"/var/www\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"A\",\n        \"email\": \"this-is-not-an-email\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 1\n        }\n    ]\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422). The name is too short and the email is malformed."
+                    }
+                },
+                {
+                    "name": "FAILS: invalid product id",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The product field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"items.0.product_id\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Bad Product Buyer\",\n        \"email\": \"postman.badproduct@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": 999999999,\n            \"quantity\": 1\n        }\n    ]\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422). Product 999999999 does not exist."
+                    }
+                },
+                {
+                    "name": "FAILS: invalid quantity (zero)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The quantity field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"items.0.quantity\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Zero Quantity Buyer\",\n        \"email\": \"postman.zero@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 0\n        }\n    ]\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422). Quantity must be a positive integer, so 0 is rejected. Negative and fractional quantities are rejected the same way."
+                    }
+                },
+                {
+                    "name": "FAILS: empty item list",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The items field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"items\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Empty Order Buyer\",\n        \"email\": \"postman.empty@example.test\"\n    },\n    \"items\": []\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422). An order must contain at least one line item."
+                    }
+                },
+                {
+                    "name": "FAILS: duplicate product in one order",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The duplicate line is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"items.1.product_id\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "orders"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer\": {\n        \"name\": \"Duplicate Buyer\",\n        \"email\": \"postman.duplicate@example.test\"\n    },\n    \"items\": [\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 1\n        },\n        {\n            \"product_id\": \"{{product_id_1}}\",\n            \"quantity\": 2\n        }\n    ]\n}"
+                        },
+                        "description": "EXPECTED TO FAIL (422).\n\nDocumented behaviour: the same product may not appear twice in one order. The client should combine the lines into a single item with the total quantity. The order_items table enforces the same rule with a unique(order_id, product_id) constraint."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "03 - Customer order history",
+            "item": [
+                {
+                    "name": "Order history for a known customer",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "",
+                                    "pm.test(\"Response is a paginated collection with customer context\", () => {",
+                                    "    const b = pm.response.json();",
+                                    "    pm.expect(b).to.have.property(\"data\").that.is.an(\"array\");",
+                                    "    pm.expect(b).to.have.property(\"links\");",
+                                    "    pm.expect(b).to.have.property(\"meta\");",
+                                    "    pm.expect(b).to.have.property(\"customer\");",
+                                    "    pm.expect(b.customer).to.have.property(\"email\");",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Each order includes its items and product details\", () => {",
+                                    "    const orders = pm.response.json().data;",
+                                    "    if (orders.length > 0) {",
+                                    "        pm.expect(orders[0]).to.have.property(\"items\").that.is.an(\"array\");",
+                                    "        if (orders[0].items.length > 0) {",
+                                    "            pm.expect(orders[0].items[0]).to.have.property(\"product\");",
+                                    "        }",
+                                    "    }",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/customers/orders?email={{existing_customer_email}}&per_page=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "customers",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "email",
+                                    "value": "{{existing_customer_email}}"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "10"
+                                }
+                            ]
+                        },
+                        "description": "Returns the paginated order history for a customer, looked up by email.\n\nUses the email saved by the new-customer order request, so run that first."
+                    }
+                },
+                {
+                    "name": "Order history for a customer with no orders",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "",
+                                    "pm.test(\"The customer exists but has an empty order list\", () => {",
+                                    "    const b = pm.response.json();",
+                                    "    pm.expect(b.data).to.be.an(\"array\").that.is.empty;",
+                                    "    pm.expect(b.customer).to.not.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/customers/orders?email={{customer_without_orders_email}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "customers",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "email",
+                                    "value": "{{customer_without_orders_email}}"
+                                }
+                            ]
+                        },
+                        "description": "A seeded customer who has never ordered. Distinguishes exists-with-no-orders (200 plus empty array) from does-not-exist (404)."
+                    }
+                },
+                {
+                    "name": "FAILS: unknown customer email",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 404 Not Found\", () => pm.response.to.have.status(404));",
+                                    "",
+                                    "pm.test(\"Response explains no customer was found\", () => {",
+                                    "    const b = pm.response.json();",
+                                    "    pm.expect(b).to.have.property(\"message\");",
+                                    "    pm.expect(b.data).to.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/customers/orders?email=nobody.at.all@example.test",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "customers",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "email",
+                                    "value": "nobody.at.all@example.test"
+                                }
+                            ]
+                        },
+                        "description": "EXPECTED TO FAIL (404). No customer has this email address."
+                    }
+                },
+                {
+                    "name": "FAILS: malformed email",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The email field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"email\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/customers/orders?email=not-an-email",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "customers",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "email",
+                                    "value": "not-an-email"
+                                }
+                            ]
+                        },
+                        "description": "EXPECTED TO FAIL (422). The email parameter is validated before any lookup happens."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "04 - Low stock products",
+            "item": [
+                {
+                    "name": "Low stock - default threshold",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "",
+                                    "pm.test(\"The response reports the default threshold was applied\", () => {",
+                                    "    const f = pm.response.json().filters;",
+                                    "    pm.expect(f.is_default_threshold).to.be.true;",
+                                    "    pm.expect(f.threshold).to.be.a(\"number\");",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Every product returned is at or below the threshold\", () => {",
+                                    "    const b = pm.response.json();",
+                                    "    b.data.forEach((p) => {",
+                                    "        pm.expect(p.stock_quantity).to.be.at.most(b.filters.threshold);",
+                                    "    });",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Results are ordered lowest stock first\", () => {",
+                                    "    const levels = pm.response.json().data.map((p) => p.stock_quantity);",
+                                    "    const sorted = [...levels].sort((a, b) => a - b);",
+                                    "    pm.expect(levels).to.eql(sorted);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/low-stock",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "low-stock"
+                            ]
+                        },
+                        "description": "No threshold parameter, so the configured default is used (INVENTORY_LOW_STOCK_THRESHOLD, default 10).\n\nThe comparison is <=, so a product sitting exactly on the threshold IS included."
+                    }
+                },
+                {
+                    "name": "Low stock - custom threshold",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", () => pm.response.to.have.status(200));",
+                                    "",
+                                    "pm.test(\"The requested threshold was applied\", () => {",
+                                    "    const f = pm.response.json().filters;",
+                                    "    pm.expect(f.threshold).to.eql(5);",
+                                    "    pm.expect(f.is_default_threshold).to.be.false;",
+                                    "});",
+                                    "",
+                                    "pm.test(\"No product exceeds the requested threshold\", () => {",
+                                    "    pm.response.json().data.forEach((p) => {",
+                                    "        pm.expect(p.stock_quantity).to.be.at.most(5);",
+                                    "    });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/low-stock?threshold=5",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "low-stock"
+                            ],
+                            "query": [
+                                {
+                                    "key": "threshold",
+                                    "value": "5"
+                                }
+                            ]
+                        },
+                        "description": "Overrides the default with threshold=5."
+                    }
+                },
+                {
+                    "name": "FAILS: negative threshold",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The threshold field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"threshold\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/low-stock?threshold=-5",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "low-stock"
+                            ],
+                            "query": [
+                                {
+                                    "key": "threshold",
+                                    "value": "-5"
+                                }
+                            ]
+                        },
+                        "description": "EXPECTED TO FAIL (422). Stock cannot be negative, so a negative threshold is a client bug."
+                    }
+                },
+                {
+                    "name": "FAILS: threshold above the allowed maximum",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                                    "",
+                                    "pm.test(\"The threshold field is flagged\", () => {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property(\"threshold\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/low-stock?threshold=99999999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "low-stock"
+                            ],
+                            "query": [
+                                {
+                                    "key": "threshold",
+                                    "value": "99999999"
+                                }
+                            ]
+                        },
+                        "description": "EXPECTED TO FAIL (422).\n\nThe threshold is capped (INVENTORY_LOW_STOCK_MAX_THRESHOLD, default 1000) so this endpoint cannot be used to dump the entire catalogue in one request."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "05 - Clean up (run last)",
+            "description": "Revokes the bearer token. Deliberately the final folder so the collection can be run straight through.",
+            "item": [
+                {
+                    "name": "Revoke the current token",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{auth_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/token",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "token"
+                            ]
+                        },
+                        "description": "Revokes the token used to make this request.\n\nRun this LAST: afterwards {{auth_token}} is no longer valid and you must issue a new one."
+                    },
+                    "description": "Revokes the token used to make this request.\n\nThis lives in its own folder so a top-to-bottom run reaches it LAST. Running it earlier would invalidate {{auth_token}} and every subsequent request would return 401.\n\nAfter this runs, issue a new token before using the collection again."
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        }
+    ]
+}
